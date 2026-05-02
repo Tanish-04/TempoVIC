@@ -4,8 +4,9 @@ paths:
   data_root: "../graph_construction/data/linux"
   test_cases_file: "successfultestcase627foundGT.json"   # relative to data_root
   prebuilt_dir: "temporal_graph"
-  save_dir: "checkpoints_627_Seed456"
-  graph_mode: "full_graph"
+  save_dir: "checkpoints_627_PaperReadouts"
+  # "full_graph" or "no_temporal"
+  graph_mode: "full_graph" 
 
 # Phase 1: Deletion-line ranking
 phase1:
@@ -23,25 +24,25 @@ phase1:
 # Phase 2: Commit ranking
 phase2:
   epochs: 100
-  lr: 0.0001 # Tried
+  lr: 0.0001
   weight_decay: 0.01
   batch_size: 16
   patience: 25
   dropout: 0.1
-  gradient_accumulation_steps: 2 # Tried
-  temperature: 0.1 # Tried
-  label_smoothing: 0.05 # Tried: On 0.1, test improve but train underfit
-  top_k_lines: 1 # Tried
-  focal_gamma: 2.5 # Tried
-  focal_alpha: 0.5 # Tried
-  margin: 0.5 # Tried
+  gradient_accumulation_steps: 2
+  temperature: 0.1
+  label_smoothing: 0.05 
+  top_k_lines: 3
+  focal_gamma: 2 
+  focal_alpha: 0.5 
+  margin: 0.5 
   margin_weight: 1.0
-  hidden_dim: 1536  # Tried
-  num_heads: 4 # Tried
-  num_commit_transformer_layers: 2  # Tried
+  hidden_dim: 1536 
+  num_heads: 4 
+  num_commit_transformer_layers: 2  
   max_commits: 50
   max_temporal_dist: 300
-  use_dual_query: True # Tried: True works better
+  use_dual_query: True 
   use_temporal_pe: True
 
 # Shared model architecture
@@ -54,7 +55,9 @@ model:
   max_nodes_per_graph: 9500
   bert_chunk: 64
   use_temporal_pe: True
-  encoder_type: "deepsets" # section_transformer, gat
+  # Main encoder_type: "gat"
+  # Variants: "section_transformer", "deepsets"
+  encoder_type: "gat"
 
 # Defaults
 defaults:

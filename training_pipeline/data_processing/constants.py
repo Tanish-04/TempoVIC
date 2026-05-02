@@ -13,6 +13,7 @@ class EdgeType(IntEnum):
     DFG_BWD = 3
     LINEMAP = 4
     TEMPORAL_FWD = 5
+    TEMPORAL_BWD = 6
 
 NUM_EDGE_TYPES = len(EdgeType)
 

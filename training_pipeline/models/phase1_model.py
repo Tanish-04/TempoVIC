@@ -17,11 +17,11 @@ class DeletionLineRanker(nn.Module):
         super().__init__()
         self.model = nn.Sequential(
             nn.Linear(hidden_dim, 32),
-            nn.GELU(),
+            # nn.GELU(),
             nn.Linear(32, 16),
-            nn.GELU(),
+            # nn.GELU(),
             nn.Linear(16, 8),
-            nn.GELU(),
+            # nn.GELU(),
             nn.Linear(8, 1),
         )
         self.output = nn.Sigmoid()
