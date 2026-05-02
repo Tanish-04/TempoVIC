@@ -17,7 +17,7 @@ joern:
   targets_file: "mapping/joern_targets.txt"
 
 vszz:
-  pyszz_path: "v-szz/icse2021-szz-replication-package/tools/pyszz"
+  pyszz_path: "../baselines/SZZ"
 
 pipeline:
   repos_dir: "repositories"
