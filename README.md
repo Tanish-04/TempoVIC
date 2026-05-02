@@ -48,7 +48,7 @@ Fixing Commit
                  ▼
 ┌────────────────────────────────────────┐
 │  Phase 2: VIC Ranking                  │
-│  ─────────────────────────────────────  │
+│  ───────────────────────────────────── │
 │  Commit Transformer + dual-query       │
 │  cross-attention                       │
 │  → Ranks historical commits to find    │
