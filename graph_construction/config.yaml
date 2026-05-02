@@ -1,0 +1,60 @@
+clang:
+  libclang_path: ""  # auto-detected — set TEMPOVC_LIBCLANG env var (see README)
+  libclang_path_env_var: "TEMPOVC_LIBCLANG"
+  c_standard: "c99"
+  system_include_paths:
+    - "/usr/include"
+    - "/usr/local/include"
+  fake_libc_include: "utils/fake_libc_include"
+
+gumtree:
+  java_home: "/usr/lib/jvm/java-21-openjdk-amd64"
+  bin_relative_path: "gumtree/dist/build/install/gumtree/bin/gumtree"
+  timeout_seconds: 120
+
+joern:
+  script_path: "mapping/genJoern.sc"
+  targets_file: "mapping/joern_targets.txt"
+
+vszz:
+  pyszz_path: "v-szz/icse2021-szz-replication-package/tools/pyszz"
+
+pipeline:
+  repos_dir: "repositories"
+  data_dir: "data"
+
+# Set TEMPOVC_PROJECT=ffmpeg at runtime to switch projects.
+# If unset, default_project is used.
+project_env_var: "TEMPOVC_PROJECT"
+default_project: "linux"
+
+projects:
+  linux:
+    repo_name: "linux"
+    root: "repositories/linux"
+    compile_db: "repositories/linux/compile_commands.json"
+    compile_db_env_var: "TEMPOVC_COMPILE_DB"
+
+  FFmpeg:
+    repo_name: "FFmpeg"
+    root: "repositories/FFmpeg"
+    compile_db: "repositories/FFmpeg/compile_commands.json"
+    compile_db_env_var: "TEMPOVC_COMPILE_DB"
+
+  ImageMagick:
+    repo_name: "ImageMagick"
+    root: "repositories/ImageMagick"
+    compile_db: "repositories/ImageMagick/compile_commands.json"
+    compile_db_env_var: "TEMPOVC_COMPILE_DB"
+
+  OpenSSL:
+    repo_name: "OpenSSL"
+    root: "repositories/OpenSSL"
+    compile_db: "repositories/OpenSSL/compile_commands.json"
+    compile_db_env_var: "TEMPOVC_COMPILE_DB"
+
+  PHP-SRC:
+    repo_name: "PHP-SRC"
+    root: "repositories/PHP-SRC"
+    compile_db: "repositories/PHP-SRC/compile_commands.json"
+    compile_db_env_var: "TEMPOVC_COMPILE_DB"

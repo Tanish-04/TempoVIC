@@ -1,0 +1,47 @@
+# ── macOS metadata ─────────────────────────────────────────────────────────────
+.DS_Store
+._*
+._.DS_Store
+__MACOSX/
+
+# ── Log files ──────────────────────────────────────────────────────────────────
+*.log
+logs/
+build_logs/
+
+# ── JSON files (compile DBs, Bear output, data files) ──────────────────────────
+*.json
+
+# ── Shell helpers not intended for distribution ────────────────────────────────
+bear_compilation/run.sh
+
+# ── Generated / downloaded data ────────────────────────────────────────────────
+data/
+data.zip
+repositories/
+workspace/
+
+# ── Installed tools (managed locally, not committed) ──────────────────────────
+# GumTree binary (built from source into mapping/gumtree/)
+mapping/gumtree/
+# Joern (installed via joern-install.sh, lives in ~/bin/joern)
+joern/
+joern-cli/
+# libclang (managed via conda + TEMPOVC_LIBCLANG env var)
+libclang/
+
+# Joern runtime workspace and targets file (generated at pipeline run time)
+mapping/joern_targets.txt
+mapping/workspace/
+
+# ── Python cache ───────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Archives ───────────────────────────────────────────────────────────────────
+*.zip
+*.tar.gz
+*.tar.bz2
