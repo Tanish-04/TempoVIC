@@ -35,15 +35,15 @@ Traditional SZZ-based approaches trace vulnerability-inducing commits (VICs) by 
 Fixing Commit
       │
       ▼
-┌────────────────────────────────────────┐
+┌────────────────────────────────────────-┐
 │  Phase 1: Root-Cause Line Identification│
 │  ─────────────────────────────────────  │
-│  GAT encoder over heterogeneous        │
-│  code graph (CFG + DFG + temporal)     │
-│  + RankNet pairwise scoring head       │
-│  → Surfaces the deletion lines most    │
-│    likely to be the root cause         │
-└────────────────┬───────────────────────┘
+│  GAT encoder over heterogeneous         │
+│  code graph (CFG + DFG + temporal)      │
+│  + RankNet pairwise scoring head        │
+│  → Surfaces the deletion lines most     │
+│    likely to be the root cause          │
+└────────────────┬────────────────────────┘
                  │ top-k deletion line embeddings
                  ▼
 ┌────────────────────────────────────────┐
