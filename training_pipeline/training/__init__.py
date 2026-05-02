@@ -1,0 +1,45 @@
+"""training — loss functions, metrics, utilities, and per-phase trainers."""
+
+from .loss import PairwiseRankingLoss, LabelSmoothingRankingLoss
+from .evaluation import (
+    load_true_commit_map,
+    evaluate_top1_metrics,
+    evaluate_topk_metrics,
+    evaluate_ranking,
+    evaluate_global,
+    print_metrics,
+)
+from .utils import (
+    set_seed,
+    setup_device,
+    EarlyStopping,
+    coerce_idx,
+    clip_and_step,
+    build_phase1_model,
+    build_phase2_model,
+)
+from .embedding_cache import score_deletion_lines, build_phase2_items
+from .phase1_trainer import train_phase1_fold
+from .phase2_trainer import train_phase2_fold
+
+__all__ = [
+    "PairwiseRankingLoss",
+    "LabelSmoothingRankingLoss",
+    "load_true_commit_map",
+    "evaluate_top1_metrics",
+    "evaluate_topk_metrics",
+    "evaluate_ranking",
+    "evaluate_global",
+    "print_metrics",
+    "set_seed",
+    "setup_device",
+    "EarlyStopping",
+    "coerce_idx",
+    "clip_and_step",
+    "build_phase1_model",
+    "build_phase2_model",
+    "score_deletion_lines",
+    "build_phase2_items",
+    "train_phase1_fold",
+    "train_phase2_fold",
+]

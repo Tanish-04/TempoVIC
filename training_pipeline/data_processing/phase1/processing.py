@@ -1,0 +1,424 @@
+import json
+import logging
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import torch
+from torch_geometric.data import Data
+
+from data_processing.constants import EdgeType
+from data_processing.phase1.minigraph import dfs_mini
+
+logger = logging.getLogger(__name__)
+
+# Minimum prefix length used for fuzzy code matching
+CODE_PREFIX_MATCH_LEN = 20
+
+
+# Filesystem helpers
+
+def find_commit_dir(test_dir: Path, commit_sha: str) -> Optional[Path]:
+    """Return the subdirectory whose name starts with the first 12 chars of SHA."""
+    prefix = commit_sha[:12]
+    for d in test_dir.iterdir():
+        if d.is_dir() and d.name.startswith(prefix):
+            return d
+    return None
+
+
+#  Node matching
+def find_history_node(
+    hist_graph_nodes: List[Dict], hist_entry: Dict
+) -> Optional[int]:
+    """
+    Find the node index in graph.json matching a V-SZZ history entry.
+
+    Priority:
+      1. Line-number range  ∩  code prefix match
+      2. Line-number range only
+      3. Code prefix match only
+    """
+    target_line = hist_entry.get("line_num")
+    target_code = hist_entry.get("code", "").strip()
+
+    if target_line is not None and target_code:
+        for i, n in enumerate(hist_graph_nodes):
+            lb, le = n.get("lineBeg", -1), n.get("lineEnd", -1)
+            if lb <= target_line <= le:
+                nc = n.get("code", "")
+                if (target_code[:CODE_PREFIX_MATCH_LEN] in nc
+                        or nc[:CODE_PREFIX_MATCH_LEN] in target_code):
+                    return i
+
+    if target_line is not None:
+        for i, n in enumerate(hist_graph_nodes):
+            if n.get("lineBeg", -1) <= target_line <= n.get("lineEnd", -1):
+                return i
+
+    if target_code:
+        for i, n in enumerate(hist_graph_nodes):
+            nc = n.get("code", "")
+            if (target_code[:CODE_PREFIX_MATCH_LEN] in nc
+                    or nc[:CODE_PREFIX_MATCH_LEN] in target_code):
+                return i
+
+    return None
+
+
+def make_synthetic_node(hist_entry: Dict) -> Dict:
+    """
+    Minimal graph.json-style node from a V-SZZ history entry.
+
+    Used when a history commit's graph.json is empty so the temporal
+    chain stays connected.
+    """
+    line_num = hist_entry.get("line_num", 0)
+    return {
+        "nodeIndex": 0,
+        "lineBeg":   line_num,
+        "lineEnd":   line_num,
+        "code":      hist_entry.get("code", ""),
+        "cfgs":      [],
+        "dfgs":      [],
+        "rootcause": False,
+    }
+
+
+#  Edge construction
+
+def build_cfg_dfg_edges(
+    subgraph_nodes: List[Dict], section_start: int, section_end: int
+) -> List[tuple]:
+    """
+    Build CFG, DFG, and LINEMAP edges for one contiguous section of the graph.
+
+    graph.json node indices are local (0-based within each section), so the
+    global index = section_start + local_idx.
+    """
+    edges = []
+    for i in range(section_start, section_end):
+        node = subgraph_nodes[i]
+
+        for cfg_t in node.get("cfgs", []):
+            target = section_start + cfg_t
+            if section_start <= target < section_end:
+                edges.append((i, target, EdgeType.CFG_FWD))
+                edges.append((target, i, EdgeType.CFG_BWD))
+
+        for dfg_t in node.get("dfgs", []):
+            target = section_start + dfg_t
+            if section_start <= target < section_end:
+                edges.append((i, target, EdgeType.DFG_FWD))
+                edges.append((target, i, EdgeType.DFG_BWD))
+
+        lmi = node.get("lineMapIndex", -1)
+        if lmi != -1:
+            target = section_start + lmi
+            if section_start <= target < section_end:
+                edges.append((i, target, EdgeType.LINEMAP))
+                edges.append((target, i, EdgeType.LINEMAP))
+
+    return edges
+
+
+# PyG conversion 
+
+def build_pyg(
+    nodes: List[Dict],
+    edges: List[tuple],
+    temporal_positions: List[int],
+    embedder,
+) -> Optional[Data]:
+    """
+    Convert graph nodes + edges into a PyG ``Data`` object.
+
+    Tokenize mode (embedder.tokenizer_only=True):
+        Stores ``token_ids`` + ``attention_mask``; CodeBERT runs inside
+        the model at training time.
+
+    Embed mode (embedder.tokenizer_only=False):
+        Calls ``embedder.encode_texts()`` to pre-compute ``x`` embeddings.
+    """
+    node_texts = [n.get("code", "") for n in nodes]
+    if not node_texts:
+        return None
+
+    temporal_pos = torch.tensor(temporal_positions, dtype=torch.long)
+
+    if edges:
+        src        = torch.tensor([e[0] for e in edges], dtype=torch.long)
+        dst        = torch.tensor([e[1] for e in edges], dtype=torch.long)
+        etype      = torch.tensor([e[2] for e in edges], dtype=torch.long)
+        edge_index = torch.stack([src, dst], dim=0)
+    else:
+        edge_index = torch.empty((2, 0), dtype=torch.long)
+        etype      = torch.empty((0,),   dtype=torch.long)
+
+    if getattr(embedder, "tokenizer_only", False):
+        toks = embedder.tokenize_texts(node_texts)
+        return Data(
+            token_ids      = toks["token_ids"],
+            attention_mask = toks["attention_mask"],
+            edge_index     = edge_index,
+            edge_type      = etype,
+            num_nodes      = toks["token_ids"].size(0),
+            temporal_pos   = temporal_pos,
+        )
+    else:
+        X = embedder.encode_texts(node_texts)
+        if X.size(0) == 0:
+            return None
+        return Data(
+            x            = X,
+            edge_index   = edge_index,
+            edge_type    = etype,
+            num_nodes    = X.size(0),
+            temporal_pos = temporal_pos,
+        )
+
+
+#  Metadata extraction
+
+def build_tp_to_commit(
+    nodes: List[Dict], temporal_positions: List[int]
+) -> Dict[int, str]:
+    """
+    Build {temporal_pos → 12-char commit SHA} from the deletion node's
+    history_chains.
+    """
+    if not nodes:
+        return {}
+    actual_tps = set(temporal_positions)
+    tp_map: Dict[int, str] = {}
+    for chain in nodes[0].get("history_chains", []):
+        for i, entry in enumerate(chain.get("history", [])):
+            tp = i + 1
+            if tp not in tp_map and tp in actual_tps:
+                tp_map[tp] = entry.get("commit", "")
+    return tp_map
+
+def build_mini_graph(all_nodes: List[Dict], del_node_idx: int) -> List[Dict]:
+    """
+    Build the MiniGraph for a deletion node from its own graph: DFS-collect local CPG neighbourhood, then remap all edge
+    indices to the new 0-based local indices, dropping edges that leave the mini-graph.
+
+    Node 0 in the returned list is always the deletion node (DFS starts there).
+    """
+    collected: List[int] = []
+    dfs_mini(del_node_idx, 0, all_nodes, collected, set())
+    old_to_new = {old: new for new, old in enumerate(collected)}
+
+    mini: List[Dict] = []
+    for new_i, old_i in enumerate(collected):
+        src = all_nodes[old_i]
+        n = dict(src)                           # shallow copy, don't mutate original
+        n["nodeIndex"]     = new_i
+        n["cfgs"]          = [old_to_new[e] for e in src.get("cfgs", [])          if e in old_to_new]
+        n["dfgs"]          = [old_to_new[e] for e in src.get("dfgs", [])          if e in old_to_new]
+        n["fieldParents"]  = [old_to_new[e] for e in src.get("fieldParents", [])  if e in old_to_new]
+        n["methodParents"] = [old_to_new[e] for e in src.get("methodParents", []) if e in old_to_new]
+        lmi = src.get("lineMapIndex", -1)
+        n["lineMapIndex"]  = old_to_new[lmi] if lmi in old_to_new else -1
+        mini.append(n)
+
+    return mini
+
+
+
+# Full-graph assembly
+
+def build_full_graph_structure(
+    all_nodes: List[Dict],
+    del_node_idx: int,
+    test_name: str,
+    data_path: Path,
+) -> Dict:
+    """
+    Build the raw full-graph structure for one deletion line.
+
+    Called by ``build_temporal_graphs.py`` to produce the
+    ``del_*.json`` files that ``DeletionLineDataset`` loads at training time.
+
+    Layout
+    ------
+    Section 0     — the single deletion-line node (from the fixing commit)
+    Sections 1..N — complete graph.json from each historical commit,
+                    one section per history step per chain
+
+    Edges
+    -----
+    CFG/DFG/LINEMAP  — intra-section (within each history graph)
+    TEMPORAL_FWD/BWD — per chain: deletion node -> C1 match -> C2 match ...
+
+    Returns {nodes, edges, temporal_positions}.
+    """
+    del_node = all_nodes[del_node_idx]
+    test_dir = data_path / test_name
+
+    # Section 0: MiniGraph of Fixing commit deletion node
+    mini_nodes = build_mini_graph(all_nodes, del_node_idx)
+
+    # del_node carries history_chains — preserve that on node 0 of the mini
+    # so build_tp_to_commit() keeps working (it reads nodes[0].history_chains).
+    mini_nodes[0]["history_chains"] = del_node.get("history_chains", [])
+
+    subgraph_nodes:     List[Dict]      = list(mini_nodes)
+    temporal_positions: List[int]       = [0] * len(mini_nodes)
+    section_starts:     List[int]       = [0]
+    temporal_chains:    List[List[int]] = []
+
+    def _add_synthetic(entry, tp):
+        """Insert a synthetic node and return its global index."""
+        idx = len(subgraph_nodes)
+        section_starts.append(idx)
+        subgraph_nodes.append(make_synthetic_node(entry))
+        temporal_positions.append(tp)
+        return idx
+
+    for chain in del_node.get("history_chains", []):
+        chain_globals: List[int] = []
+
+        for hist_idx, hist_entry in enumerate(chain.get("history", [])):
+            commit_sha = hist_entry.get("commit", "")
+            temp_pos   = hist_idx + 1
+
+            commit_dir = find_commit_dir(test_dir, commit_sha)
+            if commit_dir is None:
+                chain_globals.append(_add_synthetic(hist_entry, temp_pos))
+                continue
+            graph_path = commit_dir / "graph.json"
+
+            try:
+                with open(graph_path) as f:
+                    hist_nodes = json.load(f)
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.debug( "Error reading %s — using synthetic node: %s", graph_path, exc)
+                chain_globals.append(_add_synthetic(hist_entry, temp_pos))
+                continue
+
+            if not hist_nodes:
+                chain_globals.append(_add_synthetic(hist_entry, temp_pos))
+                continue
+
+            sec_start = len(subgraph_nodes)
+            section_starts.append(sec_start)
+
+            matched_idx = find_history_node(hist_nodes, hist_entry)
+            if matched_idx is None:
+                matched_idx = 0
+            chain_globals.append(sec_start + matched_idx)
+            for node in hist_nodes:
+                subgraph_nodes.append(node)
+                temporal_positions.append(temp_pos)
+
+        if chain_globals:
+            temporal_chains.append(chain_globals)
+
+    edges: List[tuple] = []
+    num_nodes = len(subgraph_nodes)
+
+    for chain_globals in temporal_chains:
+        prev = 0
+        for g_idx in chain_globals:
+            edges.append((prev, g_idx, EdgeType.TEMPORAL_FWD))
+            # edges.append((g_idx, prev, EdgeType.TEMPORAL_BWD))
+            prev = g_idx
+
+    for s_idx in range(len(section_starts)):
+        s_start = section_starts[s_idx]
+        s_end   = (section_starts[s_idx + 1] if s_idx + 1 < len(section_starts) else num_nodes)
+        edges.extend(build_cfg_dfg_edges(subgraph_nodes, s_start, s_end))
+
+    return {
+        "nodes":              subgraph_nodes,
+        "edges":              edges,
+        "temporal_positions": temporal_positions,
+    }
+
+
+# ── No-temporal graph builder ────────────────────────────────────────────────
+
+def build_sections_and_chains(
+    all_nodes: List[Dict],
+    del_node_idx: int,
+    test_name: str,
+    data_path: Path,
+) -> Tuple[List[Dict], List[int], List[int], List[List[int]], List[tuple]]:
+    del_node = all_nodes[del_node_idx]
+    test_dir = data_path / test_name
+
+    mini_nodes = build_mini_graph(all_nodes, del_node_idx)
+    mini_nodes[0]["history_chains"] = del_node.get("history_chains", [])
+
+    subgraph_nodes: List[Dict] = list(mini_nodes)
+    temporal_positions: List[int] = [0] * len(mini_nodes)
+    section_starts: List[int] = [0]
+    temporal_chains: List[List[int]] = []
+
+    def _add_synthetic(entry, tp):
+        idx = len(subgraph_nodes)
+        section_starts.append(idx)
+        subgraph_nodes.append(make_synthetic_node(entry))
+        temporal_positions.append(tp)
+        return idx
+
+    for chain in del_node.get("history_chains", []):
+        chain_globals: List[int] = []
+
+        for hist_idx, hist_entry in enumerate(chain.get("history", [])):
+            commit_sha = hist_entry.get("commit", "")
+            temp_pos = hist_idx + 1
+
+            commit_dir = find_commit_dir(test_dir, commit_sha)
+            if commit_dir is None:
+                chain_globals.append(_add_synthetic(hist_entry, temp_pos))
+                continue
+
+            graph_path = commit_dir / "graph.json"
+            try:
+                with open(graph_path) as f:
+                    hist_nodes = json.load(f)
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.debug("Error reading %s: %s", graph_path, exc)
+                chain_globals.append(_add_synthetic(hist_entry, temp_pos))
+                continue
+
+            if not hist_nodes:
+                chain_globals.append(_add_synthetic(hist_entry, temp_pos))
+                continue
+
+            sec_start = len(subgraph_nodes)
+            section_starts.append(sec_start)
+
+            matched_idx = find_history_node(hist_nodes, hist_entry)
+            if matched_idx is None:
+                matched_idx = 0
+            chain_globals.append(sec_start + matched_idx)
+
+            for node in hist_nodes:
+                subgraph_nodes.append(node)
+                temporal_positions.append(temp_pos)
+
+        if chain_globals:
+            temporal_chains.append(chain_globals)
+
+    num_nodes = len(subgraph_nodes)
+    intra_section_edges: List[tuple] = []
+    for s_idx in range(len(section_starts)):
+        s_start = section_starts[s_idx]
+        s_end = (
+            section_starts[s_idx + 1]
+            if s_idx + 1 < len(section_starts)
+            else num_nodes
+        )
+        intra_section_edges.extend(
+            build_cfg_dfg_edges(subgraph_nodes, s_start, s_end)
+        )
+
+    return (
+        subgraph_nodes,
+        temporal_positions,
+        section_starts,
+        temporal_chains,
+        intra_section_edges,
+    )
