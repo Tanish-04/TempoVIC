@@ -2,7 +2,7 @@
 
 This directory contains the SZZ baseline implementations used for comparison against the TempoVIC approach. The codebase has been streamlined for C/C++ projects and includes scripts for both executing the baselines and evaluating their performance against our curated ground-truth vulnerability dataset.
 
-> **Acknowledgments:** This codebase was originally adapted from [juzizi44/LLM_SZZ](https://github.com/juzizi44/LLM_SZZ) and has been heavily refined and adapted specifically for C/C++ datasets.
+> **Acknowledgments:** This codebase was originally adapted from [juzizi44/LLM_SZZ](https://github.com/juzizi44/LLM_SZZ) and has been refined for C/C++ datasets.
 ## Supported Baselines
 
 - **B-SZZ** (`b_szz.py`): The standard Base SZZ algorithm.
