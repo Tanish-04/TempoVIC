@@ -68,7 +68,7 @@ class DeletionLineDataset:
         """
         mode_dir = self.prebuilt_dir / self.graph_mode
 
-        print(f"  [dataset] Loading graphs from: {mode_dir}")
+        # Print removed for cleaner output
         if not mode_dir.exists():
             raise FileNotFoundError(
                 f"Pre-built graph directory not found: {mode_dir}\n"
@@ -95,11 +95,9 @@ class DeletionLineDataset:
                 total += len(graphs)
 
             if (tc_idx + 1) % 50 == 0:
-                print(f"  [dataset] {tc_idx + 1}/{len(self.test_cases)} "
-                      f"test cases — {total} graphs loaded")
+                pass
 
-        print(f"  [dataset] {len(self.mini_graphs)} test cases, "
-              f"{total} graphs, {skipped} skipped")
+        pass
 
     def _load_one(self, json_path: Path, test_name: str) -> Optional[MiniGraph]:
         """

@@ -289,17 +289,7 @@ def build_phase2_items(
             })
             n_valid_by_k[k] += 1
         
-        if (tc_idx + 1) % 50 == 0:
-            print(f"    [{tc_idx+1}/{len(all_cases)}] built so far: "
-                  + ", ".join(f"k{k}={n_valid_by_k[k]}" for k in range(1, top_k_lines+1)))
 
 
-    for k in range(1, top_k_lines + 1):
-        n_valid = n_valid_by_k[k]
-        items   = results_by_k[k]
-        print(f"\n  [top_k={k}] Phase 2 items: {n_valid}/{len(all_cases)} valid")
-        n_correct = sum(1 for i in items if i["valid"] and i["is_correct_deletion_line"])
-        n_wrong   = sum(1 for i in items if i["valid"] and not i["is_correct_deletion_line"])
-        print(f"  [top_k={k}] Correct deletion lines: {n_correct} | Wrong: {n_wrong}")
 
     return results_by_k
