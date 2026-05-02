@@ -259,6 +259,7 @@ python main.py --encoder-type deepsets --graph-mode no_temporal
 ```
 
 All hyper-parameters are configured via [`training_pipeline/training_config.yaml`](training_pipeline/training_config.yaml).
+See [`training_pipeline/README.md`](training_pipeline/README.md) for detailed instructions on Stage 2 and 3
 
 ---
 
