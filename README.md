@@ -17,6 +17,7 @@ This repository contains the complete code implementation accompanying the paper
    - [Stage 1: Graph Construction](#stage-1-graph-construction)
    - [Stage 2: Graph Pre-Building](#stage-2-graph-pre-building)
    - [Stage 3: Training](#stage-3-training)
+   - [Stage 4: Evaluation](#stage-4-evaluation)
 7. [Baselines](#baselines)
 8. [Model Variants & Ablations](#model-variants--ablations)
 9. [Configuration Reference](#configuration-reference)
@@ -185,12 +186,12 @@ For graph construction, the following additional tools must be installed:
 
 ## End-to-End Pipeline
 
-The complete pipeline from raw CVE data to trained model runs in three stages:
+The complete pipeline from raw CVE data to trained model runs in four stages:
 
 ```
-Stage 1                    Stage 2                  Stage 3
-Graph Construction   →   Graph Pre-Building   →    Training
-(run once)               (PyG conversion)           (Phase 1 → Phase 2)
+Stage 1                    Stage 2                  Stage 3                    Stage 4
+Graph Construction   →   Graph Pre-Building   →    Training            →      Evaluation
+(run once)               (PyG conversion)           (Phase 1 → Phase 2)        (run_evaluation.py)
 ```
 
 ### Stage 1: Graph Construction
@@ -260,6 +261,23 @@ python main.py --encoder-type deepsets --graph-mode no_temporal
 
 All hyper-parameters are configured via [`training_pipeline/training_config.yaml`](training_pipeline/training_config.yaml).
 See [`training_pipeline/README.md`](training_pipeline/README.md) for detailed instructions on Stage 2 and 3
+
+### Stage 4: Evaluation
+
+Evaluate a trained model on the held-out test set using our `run_evaluation.py` script. 
+
+> **Pre-trained Weights:** If you want to evaluate without training from scratch, the pre-trained weights (`phase1_best.pt` and `phase2_best.pt`) are available at: [TempoVIC Pre-trained Models OSF](https://osf.io/zcdqp/overview?view_only=fda7deaa56364f4693048695e7afe1f1). Place these weights in your `save_dir` (configured in `training_config.yaml`).
+
+```bash
+cd training_pipeline
+
+# Evaluate the main GAT model
+python run_evaluation.py
+
+# Evaluate ablation variants
+python run_evaluation.py --variant section_transformer
+python run_evaluation.py --variant deepsets
+```
 
 ---
 
